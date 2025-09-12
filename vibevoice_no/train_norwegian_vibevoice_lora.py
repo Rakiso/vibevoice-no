@@ -40,21 +40,16 @@ def parse_args() -> argparse.Namespace:
 
 
 def _guess_target_modules(model: torch.nn.Module) -> List[str]:
-    names: List[str] = []
-    for name, module in model.named_modules():
-        low = name.lower()
-        if any(k in low for k in ["attn", "attention", "mlp", "proj", "ff", "diffusion", "text"]):
-            # Only leaf modules
-            if len(list(module.children())) == 0:
-                names.append(name.split(".")[-1])
-    # Deduplicate while preserving order
-    seen = set()
-    uniq: List[str] = []
-    for n in names:
-        if n not in seen:
-            uniq.append(n)
-            seen.add(n)
-    return uniq or ["q_proj", "k_proj", "v_proj", "o_proj"]
+    # Restrict to known Linear projections only (PEFT supports Linear/Embedding/Conv)
+    return [
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj",
+    ]
 
 
 def main() -> None:
