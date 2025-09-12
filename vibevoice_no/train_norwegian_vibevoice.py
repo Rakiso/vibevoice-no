@@ -70,6 +70,7 @@ class TtsDataCollator:
         self.augment_pitch_semitones = float(augment_pitch_semitones)
         self.augment_tempo_pct = float(augment_tempo_pct)
         self.target_sr = int(target_sr)
+        self._vv_debug_once = False
 
     def _load_audio(self, path: str) -> Tuple[np.ndarray, int]:
         y, sr = librosa.load(path, sr=None, mono=False)
@@ -165,8 +166,9 @@ class TtsDataCollator:
             if not speaker_ids:
                 speaker_ids = [1]
             if ref_waveform is not None and ref_sr is not None:
+                audio_dict = {"array": ref_waveform, "sampling_rate": ref_sr}
                 voice_input.append([
-                    {"speaker": sid, "waveform": ref_waveform, "sampling_rate": ref_sr} for sid in speaker_ids
+                    {"speaker": sid, "audio": audio_dict} for sid in speaker_ids
                 ])
             else:
                 voice_input.append([])
@@ -179,6 +181,13 @@ class TtsDataCollator:
                 return_tensors="pt",
                 padding=True,
             )
+            if not self._vv_debug_once:
+                self._vv_debug_once = True
+                try:
+                    sem = proc_out.get("speech_semantic_tensors", None) if isinstance(proc_out, dict) else getattr(proc_out, "speech_semantic_tensors", None)
+                    print("VibeVoice DEBUG | sem type:", type(sem), "shape:", getattr(sem, "shape", None))
+                except Exception:
+                    pass
             return proc_out.data if hasattr(proc_out, "data") else proc_out
         except Exception:
             pass

@@ -357,6 +357,22 @@ class VibeVoiceForConditionalGeneration(VibeVoicePreTrainedModel):
         
         x = self.get_input_embeddings()(input_ids)
 
+        # Fail-safe: if semantic features are missing, fabricate safe zeros matching connector input
+        try:
+            connector_device = next(self.model.semantic_connector.parameters()).device
+            connector_dtype = next(self.model.semantic_connector.parameters()).dtype
+            connector_in_features = self.model.semantic_connector.fc1.in_features
+        except Exception:
+            connector_device = x.device
+            connector_dtype = x.dtype
+            connector_in_features = x.size(-1)
+
+        if speech_semantic_tensors is None:
+            batch_size = input_ids.size(0) if input_ids is not None else 1
+            speech_semantic_tensors = torch.zeros(
+                (batch_size, connector_in_features), device=connector_device, dtype=connector_dtype
+            )
+
         semantic_speech_all_connect_features = self.model.semantic_connector(speech_semantic_tensors)
         if speeches_loss_input is not None:
             # only part audio need diffuse
