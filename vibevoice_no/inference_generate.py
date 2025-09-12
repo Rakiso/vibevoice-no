@@ -7,8 +7,8 @@ import numpy as np
 import soundfile as sf
 import torch
 
-from vibevoice.modular.modeling_vibevoice import (  # type: ignore[import]
-    VibeVoiceForConditionalGeneration,
+from vibevoice.modular.modeling_vibevoice_inference import (  # type: ignore[import]
+    VibeVoiceForConditionalGenerationInference,
 )
 from vibevoice.processor.vibevoice_processor import (  # type: ignore[import]
     VibeVoiceProcessor,
@@ -75,7 +75,7 @@ def main() -> None:
     # Choose device_map
     use_device_map_auto = is_cuda and (args.device_map == "auto")
 
-    model = VibeVoiceForConditionalGeneration.from_pretrained(
+    model = VibeVoiceForConditionalGenerationInference.from_pretrained(
         args.model_dir,
         torch_dtype=torch_dtype,
         device_map=("auto" if use_device_map_auto else None),
@@ -105,13 +105,27 @@ def main() -> None:
         inputs = {k: v.to(device) for k, v in inputs.items()}
 
     with torch.no_grad():
-        _ = model.generate(**inputs, max_new_tokens=1)
-        if hasattr(model, "decode_last_speech"):
-            audio = model.decode_last_speech()
-        elif hasattr(model, "get_generated_audio"):
-            audio = model.get_generated_audio()
-        else:
-            audio = np.zeros(int(args.seconds * TARGET_SR), dtype=np.float32)
+        gen_out = model.generate(
+            inputs=inputs["input_ids"],
+            input_ids=inputs["input_ids"],
+            attention_mask=inputs.get("attention_mask"),
+            tokenizer=tokenizer,
+            max_new_tokens=1,
+            show_progress_bar=False,
+            return_speech=True,
+        )
+        audio = None
+        if hasattr(gen_out, "speech_outputs"):
+            speech_outputs = getattr(gen_out, "speech_outputs")
+            if isinstance(speech_outputs, list) and speech_outputs:
+                audio = speech_outputs[0]
+        if audio is None:
+            if hasattr(model, "decode_last_speech"):
+                audio = model.decode_last_speech()
+            elif hasattr(model, "get_generated_audio"):
+                audio = model.get_generated_audio()
+            else:
+                audio = np.zeros(int(args.seconds * TARGET_SR), dtype=np.float32)
 
     if isinstance(audio, torch.Tensor):
         audio = audio.detach().cpu().float().numpy()
