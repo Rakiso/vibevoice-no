@@ -209,6 +209,26 @@ class TtsDataCollator:
                     acoustic_input_mask[b, start:start + length] = True
                 out["acoustic_input_mask"] = acoustic_input_mask
                 out["acoustic_loss_mask"] = acoustic_input_mask.clone()
+                # --- Labels for LM loss ---
+                try:
+                    attn = out.get("attention_mask") if isinstance(out, dict) else getattr(out, "attention_mask", None)
+                    labels = ids.clone()
+                    IGNORE = -100
+                    if attn is not None:
+                        labels[attn == 0] = IGNORE
+                    ac_in_mask = out.get("acoustic_input_mask") if isinstance(out, dict) else getattr(out, "acoustic_input_mask", None)
+                    if ac_in_mask is not None:
+                        labels[ac_in_mask] = IGNORE
+                    for tok_name in ("speech_start_id", "speech_end_id", "_speech_start_id", "_speech_end_id"):
+                        try:
+                            tid = getattr(self.processor.tokenizer, tok_name, None)
+                        except Exception:
+                            tid = None
+                        if tid is not None:
+                            labels[ids == tid] = IGNORE
+                    out["labels"] = labels
+                except Exception:
+                    pass
             except Exception:
                 pass
 
@@ -258,6 +278,26 @@ class TtsDataCollator:
                     acoustic_input_mask[b, start:start + length] = True
                 out["acoustic_input_mask"] = acoustic_input_mask
                 out["acoustic_loss_mask"] = acoustic_input_mask.clone()
+                # --- Labels for LM loss ---
+                try:
+                    attn = out.get("attention_mask") if isinstance(out, dict) else getattr(out, "attention_mask", None)
+                    labels = ids.clone()
+                    IGNORE = -100
+                    if attn is not None:
+                        labels[attn == 0] = IGNORE
+                    ac_in_mask = out.get("acoustic_input_mask") if isinstance(out, dict) else getattr(out, "acoustic_input_mask", None)
+                    if ac_in_mask is not None:
+                        labels[ac_in_mask] = IGNORE
+                    for tok_name in ("speech_start_id", "speech_end_id", "_speech_start_id", "_speech_end_id"):
+                        try:
+                            tid = getattr(self.processor.tokenizer, tok_name, None)
+                        except Exception:
+                            tid = None
+                        if tid is not None:
+                            labels[ids == tid] = IGNORE
+                    out["labels"] = labels
+                except Exception:
+                    pass
             except Exception:
                 pass
             return out
@@ -300,6 +340,26 @@ class TtsDataCollator:
                     acoustic_input_mask[b, start:start + length] = True
                 out["acoustic_input_mask"] = acoustic_input_mask
                 out["acoustic_loss_mask"] = acoustic_input_mask.clone()
+                # --- Labels for LM loss ---
+                try:
+                    attn = out.get("attention_mask") if isinstance(out, dict) else getattr(out, "attention_mask", None)
+                    labels = ids.clone()
+                    IGNORE = -100
+                    if attn is not None:
+                        labels[attn == 0] = IGNORE
+                    ac_in_mask = out.get("acoustic_input_mask") if isinstance(out, dict) else getattr(out, "acoustic_input_mask", None)
+                    if ac_in_mask is not None:
+                        labels[ac_in_mask] = IGNORE
+                    for tok_name in ("speech_start_id", "speech_end_id", "_speech_start_id", "_speech_end_id"):
+                        try:
+                            tid = getattr(self.processor.tokenizer, tok_name, None)
+                        except Exception:
+                            tid = None
+                        if tid is not None:
+                            labels[ids == tid] = IGNORE
+                    out["labels"] = labels
+                except Exception:
+                    pass
             except Exception:
                 pass
             return out
@@ -316,6 +376,24 @@ class TtsDataCollator:
             [torch.tensor(a) for a in audios], batch_first=True
         )
         proc_out["sampling_rate"] = torch.tensor([self.target_sr] * len(audios))
+        # --- Labels for LM loss (fallback path) ---
+        try:
+            ids = proc_out["input_ids"] if isinstance(proc_out, dict) else getattr(proc_out, "input_ids")
+            attn = proc_out.get("attention_mask") if isinstance(proc_out, dict) else getattr(proc_out, "attention_mask", None)
+            labels = ids.clone()
+            IGNORE = -100
+            if attn is not None:
+                labels[attn == 0] = IGNORE
+            for tok_name in ("speech_start_id", "speech_end_id", "_speech_start_id", "_speech_end_id"):
+                try:
+                    tid = getattr(self.processor.tokenizer, tok_name, None)
+                except Exception:
+                    tid = None
+                if tid is not None:
+                    labels[ids == tid] = IGNORE
+            proc_out["labels"] = labels
+        except Exception:
+            pass
         return proc_out
 
 

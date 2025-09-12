@@ -609,6 +609,7 @@ class VibeVoiceForConditionalGeneration(VibeVoicePreTrainedModel):
         x = x.squeeze(1)  # [B, L, H]
         attention_mask = _vv_to_2d_mask(attention_mask)
 
+        # Forward through the language model
         outputs = self.model(
             input_ids=None,
             attention_mask=attention_mask,
@@ -624,16 +625,20 @@ class VibeVoiceForConditionalGeneration(VibeVoicePreTrainedModel):
 
         hidden_states = outputs.last_hidden_state
         logits = self.lm_head(hidden_states)
-        # logits = logits.float()
-
-        loss = None
+        # Compute LM loss locally using labels if provided
+        lm_loss = None
         if labels is not None:
-            # The custom CE loss with masking is calculated in the training script.
-            # We leave the standard loss calculation here as None.
-            pass
+            shift_logits = logits[:, :-1, :].contiguous()
+            shift_labels = labels[:, 1:].contiguous()
+            lm_loss = F.cross_entropy(
+                shift_logits.view(-1, shift_logits.size(-1)),
+                shift_labels.view(-1),
+                ignore_index=-100,
+            )
 
         # --- Diffusion Loss Calculation ---
         diffusion_loss = None
+        speech_len = 0
         # This block is executed only if we are in a context that involves speech.
         if (speech_tensors is not None 
             and acoustic_loss_mask is not None 
@@ -691,12 +696,22 @@ class VibeVoiceForConditionalGeneration(VibeVoicePreTrainedModel):
             diffusion_loss += sum(p.sum() for p in self.model.semantic_connector.parameters()) * 0.0
         # --- End Diffusion Loss Calculation ---
 
+        # Total loss = LM loss (+ weighted diffusion loss)
+        diff_w = getattr(self, "diffusion_loss_weight", 1.0)
+        total_loss = None
+        if (lm_loss is not None) and (diffusion_loss is not None):
+            total_loss = lm_loss + diff_w * diffusion_loss
+        elif lm_loss is not None:
+            total_loss = lm_loss
+        elif diffusion_loss is not None:
+            total_loss = diff_w * diffusion_loss
+
         if not return_dict:
             output = (logits, speech_len) + outputs.to_tuple()[1:]
-            return (loss, diffusion_loss) + output
+            return (total_loss, diffusion_loss) + output
 
         return VibeVoiceCausalLMOutputWithPast(
-            loss=loss,
+            loss=total_loss,
             diffusion_loss=diffusion_loss,
             speech_token_num=speech_len if speech_tensors is not None else 0,
             logits=logits,
