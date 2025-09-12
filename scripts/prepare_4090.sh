@@ -26,9 +26,9 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -U pip
 
-echo "[setup] Installing PyTorch 2.8.0 CUDA 12.4 wheels"
+echo "[setup] Installing PyTorch 2.6.0 CUDA 12.4 wheels"
 pip install --index-url https://download.pytorch.org/whl/cu124 \
-  torch==2.8.0+cu124 torchaudio==2.8.0+cu124
+  torch==2.6.0+cu124 torchaudio==2.6.0+cu124
 
 echo "[setup] Installing project requirements"
 pip install -r requirements.txt
