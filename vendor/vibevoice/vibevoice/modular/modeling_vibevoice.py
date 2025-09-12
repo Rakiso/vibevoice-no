@@ -352,10 +352,23 @@ class VibeVoiceForConditionalGeneration(VibeVoicePreTrainedModel):
                 if speech_type == "audio":
                     with torch.no_grad():
                         enc_out = self.model.acoustic_tokenizer.encode(speech_tensors.unsqueeze(1))
-                        frames = _vv_extract_frames(enc_out)
+                        frames = None
+                        if hasattr(enc_out, "sample") and callable(enc_out.sample):
+                            try:
+                                frames = enc_out.sample(self.model.acoustic_tokenizer.std_dist_type)
+                            except Exception:
+                                try:
+                                    frames = enc_out.sample()
+                                except Exception:
+                                    frames = None
+                        if frames is None:
+                            frames = _vv_extract_frames(enc_out)
+                        frames = _vv_peel(frames)
                         if not torch.is_tensor(frames):
                             frames = torch.as_tensor(frames, device=speech_tensors.device)
                         if frames.dim() == 1:
+                            frames = frames.unsqueeze(0)
+                        if frames.dim() == 2:
                             frames = frames.unsqueeze(0)
                         if not hasattr(self, "_vv_dbg_once"):
                             self._vv_dbg_once = True
@@ -364,7 +377,7 @@ class VibeVoiceForConditionalGeneration(VibeVoicePreTrainedModel):
                                 print("FRAMES shape:", getattr(frames, "shape", None), "dtype:", getattr(frames, "dtype", None))
                             except Exception:
                                 pass
-                    audio_tokens = frames.sample(self.model.acoustic_tokenizer.std_dist_type)[0]
+                    audio_tokens = frames
 
                 elif speech_type == "vae":
                     # Use config to get vae_dim instead of non-existent self.args
