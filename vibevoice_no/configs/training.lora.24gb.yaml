@@ -14,4 +14,7 @@ bf16: true
 max_length: 8192
 augment_pitch_semitones: 0.0
 augment_tempo_pct: 0.0
+report_to: [tensorboard]
+logging_dir: ./runs
+load_best_model_at_end: false
 

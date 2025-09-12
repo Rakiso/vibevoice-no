@@ -128,7 +128,9 @@ def main() -> None:
         bf16=bool(cfg.get("bf16", True)) and torch.cuda.is_available(),
         dataloader_num_workers=2,
         remove_unused_columns=False,
-        report_to=["none"],
+        report_to=list(cfg.get("report_to", ["tensorboard"])),
+        logging_dir=str(cfg.get("logging_dir", "./runs")),
+        load_best_model_at_end=bool(cfg.get("load_best_model_at_end", False)),
     )
 
     trainer = Trainer(
