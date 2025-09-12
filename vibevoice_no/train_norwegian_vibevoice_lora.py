@@ -87,7 +87,13 @@ def main() -> None:
         pass
 
     train_items = _read_jsonl(Path(cfg["train_file"]))
-    eval_items = _read_jsonl(Path(cfg["valid_file"]))
+    valid_path = Path(cfg["valid_file"])
+    if valid_path.exists():
+        eval_items = _read_jsonl(valid_path)
+    else:
+        # Fallback: use a small slice of training data for eval to ensure training starts
+        slice_n = min(1000, len(train_items))
+        eval_items = train_items[:slice_n]
 
     train_ds = JsonlTtsDataset(train_items)
     eval_ds = JsonlTtsDataset(eval_items)
@@ -106,6 +112,14 @@ def main() -> None:
     if args.use_eval_balanced_sampler:
         eval_sampler = _build_balanced_sampler(eval_items)
 
+    # Resolve reporting backend (fallback to none if tensorboard unavailable)
+    report_to_cfg = list(cfg.get("report_to", ["tensorboard"]))
+    if "tensorboard" in report_to_cfg:
+        try:
+            import tensorboard as _tb  # type: ignore # noqa: F401
+        except Exception:
+            report_to_cfg = ["none"]
+
     training_args = TrainingArguments(
         output_dir=str(cfg.get("output_dir", "./vibevoice_no_7b")),
         num_train_epochs=int(cfg.get("num_epochs", 3)),
@@ -121,7 +135,7 @@ def main() -> None:
         bf16=bool(cfg.get("bf16", True)) and torch.cuda.is_available(),
         dataloader_num_workers=2,
         remove_unused_columns=False,
-        report_to=list(cfg.get("report_to", ["tensorboard"])),
+        report_to=report_to_cfg,
         logging_dir=str(cfg.get("logging_dir", "./runs")),
         # Keep args minimal for broad Transformers compatibility
     )
