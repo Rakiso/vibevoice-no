@@ -18,6 +18,8 @@ from transformers import (
     set_seed,
 )
 import librosa
+import re
+import soundfile as sf
 import yaml
 
 from vibevoice.processor.vibevoice_processor import VibeVoiceProcessor
@@ -81,6 +83,21 @@ class TtsDataCollator:
             sr = self.target_sr
         return y, sr
 
+    def _load_wav_24k(self, path: str) -> Tuple[np.ndarray, int]:
+        y, sr = sf.read(path, dtype="float32", always_2d=False)
+        if isinstance(y, np.ndarray) and y.ndim > 1:
+            y = y.mean(axis=1)
+        if sr != 24000:
+            # librosa is already an optional dependency here; try high quality first
+            try:
+                y = librosa.resample(y, orig_sr=sr, target_sr=24000, res_type="soxr_hq")
+            except Exception:
+                y = librosa.resample(y, orig_sr=sr, target_sr=24000)
+            sr = 24000
+        if not np.isfinite(y).all():
+            y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0).astype("float32")
+        return y.astype("float32"), sr
+
     def _augment(self, y: np.ndarray, sr: int) -> np.ndarray:
         if abs(self.augment_pitch_semitones) > 1e-6:
             try:
@@ -100,18 +117,38 @@ class TtsDataCollator:
         texts: List[str] = []
         audios: List[np.ndarray] = []
         voice_samples: List[List[Union[str, np.ndarray]]] = []
-        default_ref = "/workspace/vibevoice-no/assets/default_ref.wav"
+        # Resolve default reference path across common environments
+        default_ref_candidates: List[Optional[str]] = [
+            os.environ.get("VV_DEFAULT_REF"),
+            "/workspace/vibevoice-no/assets/default_ref.wav",
+            str((Path(__file__).resolve().parents[1] / "assets" / "default_ref.wav")),
+            str((Path.cwd() / "assets" / "default_ref.wav")),
+        ]
+        default_ref: Optional[str] = next((p for p in default_ref_candidates if p and os.path.exists(p)), None)
+
+        # Preload fallback reference waveform if available
+        ref_waveform: Optional[np.ndarray] = None
+        ref_sr: Optional[int] = None
+        if default_ref is not None:
+            try:
+                ref_waveform, ref_sr = self._load_wav_24k(default_ref)
+            except Exception:
+                ref_waveform, ref_sr = None, None
+
+        # Build per-sample voice_input objects (list per item)
+        voice_input: List[List[Dict[str, Any]]] = []
         for rec in batch:
             text = str(rec.get("text", ""))
             audio_path = str(rec.get("audio"))
             y, sr = self._load_audio(audio_path)
             y = self._augment(y, sr)
-            texts.append(ensure_script_format(text))
+            script = ensure_script_format(text)
+            texts.append(script)
             audios.append(y.astype(np.float32))
 
-            # extract optional voice reference from record
+            # extract optional voice reference from record (legacy path support)
             v = rec.get("voice_input") or rec.get("voice") or rec.get("voice_path")
-            if v is None and os.path.exists(default_ref):
+            if v is None and default_ref is not None:
                 voice_samples.append([default_ref])
             elif v is None:
                 voice_samples.append([])
@@ -120,7 +157,33 @@ class TtsDataCollator:
             else:
                 voice_samples.append([v])
 
-        # Try processor signature with explicit voice samples
+            # Parse speakers in the script and attach reference waveform objects
+            try:
+                speaker_ids = sorted(set(int(m.group(1)) for m in re.finditer(r"(?m)^\s*Speaker\s+(\d+)\s*:\s+", script)))
+            except Exception:
+                speaker_ids = []
+            if not speaker_ids:
+                speaker_ids = [1]
+            if ref_waveform is not None and ref_sr is not None:
+                voice_input.append([
+                    {"speaker": sid, "waveform": ref_waveform, "sampling_rate": ref_sr} for sid in speaker_ids
+                ])
+            else:
+                voice_input.append([])
+
+        # Preferred: structured voice_input with waveform + sampling_rate
+        try:
+            proc_out = self.processor(
+                text_input=texts,
+                voice_input=voice_input,
+                return_tensors="pt",
+                padding=True,
+            )
+            return proc_out.data if hasattr(proc_out, "data") else proc_out
+        except Exception:
+            pass
+
+        # Try processor signature with explicit voice samples (path-based)
         try:
             proc_out = self.processor(
                 text=texts,

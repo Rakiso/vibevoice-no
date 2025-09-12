@@ -91,3 +91,6 @@ preprocess*.log
 preprocess_full.*
 vibevoice_no/data_raw/wavs/
 vibevoice_no/data_processed/
+
+vibevoice_no/data_raw/wavs/*
+!vibevoice_no/data_raw/wavs/.gitkeep
