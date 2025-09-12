@@ -106,6 +106,16 @@ def _vv_resize_time(feat: torch.Tensor, target_len: int) -> torch.Tensor:
     x = F.interpolate(x, size=target_len, mode="linear", align_corners=False)
     x = x.squeeze(0).transpose(0, 1).contiguous()  # [target_len, D]
     return x
+
+def _vv_ensure_4d(x: torch.Tensor) -> torch.Tensor:
+    # Ensure [B, 1, L, H]
+    if x.dim() == 4:
+        return x
+    if x.dim() == 3:
+        return x.unsqueeze(1)
+    if x.dim() == 2:
+        return x.unsqueeze(0).unsqueeze(1)
+    raise ValueError(f"unexpected x.dim={x.dim()} shape={x.shape}")
 @dataclass
 class VibeVoiceCausalLMOutputWithPast(ModelOutput):
     loss: Optional[torch.FloatTensor] = None
@@ -486,6 +496,8 @@ class VibeVoiceForConditionalGeneration(VibeVoicePreTrainedModel):
                 )
             if speech_tensors is not None:
                 # Insert features along time using a 1D time mask, resizing if needed
+                x = _vv_ensure_4d(x)
+                acoustic_input_mask = _vv_ensure_4d(acoustic_input_mask)
                 B, _, L, H = x.shape
                 time_mask = acoustic_input_mask.any(dim=-1)  # [B, 1, L]
                 target_len = int(time_mask[0, 0].sum().item())
@@ -508,6 +520,8 @@ class VibeVoiceForConditionalGeneration(VibeVoicePreTrainedModel):
                 )
             if speech_tensors is not None:
                 # Insert features along time using a 1D time mask, resizing if needed
+                x = _vv_ensure_4d(x)
+                acoustic_input_mask = _vv_ensure_4d(acoustic_input_mask)
                 B, _, L, H = x.shape
                 time_mask = acoustic_input_mask.any(dim=-1)  # [B, 1, L]
                 target_len = int(time_mask[0, 0].sum().item())
