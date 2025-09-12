@@ -29,6 +29,18 @@ logger = logging.get_logger(__name__)
 if not hasattr(modeling_utils, "ALL_PARALLEL_STYLES") or modeling_utils.ALL_PARALLEL_STYLES is None:
     modeling_utils.ALL_PARALLEL_STYLES = ["tp", "none", "colwise", "rowwise"]
 
+def _vv_extract_frames(enc_out):
+    # New API: object with attributes
+    for attr in ("frames", "codes", "token_ids"):
+        if hasattr(enc_out, attr):
+            val = getattr(enc_out, attr)
+            if isinstance(val, (list, tuple)):
+                return val[0]
+            return val
+    # Old API: nested list/tuple [batch][stream]
+    if isinstance(enc_out, (list, tuple)):
+        return enc_out[0][0]
+    raise TypeError(f"Ukjent encoder output-type: {type(enc_out)}")
 @dataclass
 class VibeVoiceCausalLMOutputWithPast(ModelOutput):
     loss: Optional[torch.FloatTensor] = None
@@ -287,7 +299,12 @@ class VibeVoiceForConditionalGeneration(VibeVoicePreTrainedModel):
             with torch.no_grad():
                 if speech_type == "audio":
                     with torch.no_grad():
-                        frames = self.model.acoustic_tokenizer.encode(speech_tensors.unsqueeze(1))[0][0]
+                        enc_out = self.model.acoustic_tokenizer.encode(speech_tensors.unsqueeze(1))
+                        frames = _vv_extract_frames(enc_out)
+                        if not torch.is_tensor(frames):
+                            frames = torch.as_tensor(frames, device=speech_tensors.device)
+                        if frames.dim() == 1:
+                            frames = frames.unsqueeze(0)
                     audio_tokens = frames.sample(self.model.acoustic_tokenizer.std_dist_type)[0]
 
                 elif speech_type == "vae":
