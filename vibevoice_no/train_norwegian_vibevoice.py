@@ -7,7 +7,7 @@ import os
 import random
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -99,6 +99,8 @@ class TtsDataCollator:
     def __call__(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         texts: List[str] = []
         audios: List[np.ndarray] = []
+        voice_samples: List[List[Union[str, np.ndarray]]] = []
+        default_ref = "/workspace/vibevoice-no/assets/default_ref.wav"
         for rec in batch:
             text = str(rec.get("text", ""))
             audio_path = str(rec.get("audio"))
@@ -107,7 +109,30 @@ class TtsDataCollator:
             texts.append(ensure_script_format(text))
             audios.append(y.astype(np.float32))
 
-        # Try common processor signatures
+            # extract optional voice reference from record
+            v = rec.get("voice_input") or rec.get("voice") or rec.get("voice_path")
+            if v is None and os.path.exists(default_ref):
+                voice_samples.append([default_ref])
+            elif v is None:
+                voice_samples.append([])
+            elif isinstance(v, (list, tuple)):
+                voice_samples.append(list(v))
+            else:
+                voice_samples.append([v])
+
+        # Try processor signature with explicit voice samples
+        try:
+            proc_out = self.processor(
+                text=texts,
+                voice_samples=voice_samples,
+                return_tensors="pt",
+                padding=True,
+            )
+            return proc_out.data if hasattr(proc_out, "data") else proc_out
+        except Exception:
+            pass
+
+        # Fallback: text + audio batch (legacy path)
         try:
             proc_out = self.processor(
                 text=texts,
@@ -120,7 +145,7 @@ class TtsDataCollator:
         except Exception:
             pass
 
-        # Fallback: text-only tokenization; audio passed separately for custom models
+        # Last resort: text only
         proc_out = self.processor(
             text=texts,
             return_tensors="pt",
