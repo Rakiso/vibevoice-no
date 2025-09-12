@@ -106,7 +106,6 @@ def main() -> None:
 
     with torch.no_grad():
         gen_out = model.generate(
-            inputs=inputs["input_ids"],
             input_ids=inputs["input_ids"],
             attention_mask=inputs.get("attention_mask"),
             tokenizer=tokenizer,
