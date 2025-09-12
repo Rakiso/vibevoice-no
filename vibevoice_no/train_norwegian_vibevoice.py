@@ -134,19 +134,24 @@ class TtsDataCollator:
 
 
 def ensure_script_format(text: str, default_idx: int = 1) -> str:
-    """Wrap plain lines into a supported speaker format if needed.
-    VibeVoice expects lines like "Speaker 1:" or "[1]:".
+    """Ensure lines follow "Speaker N:" format required by the VibeVoice parser.
+    - Convert bracket style "[N]:" to "Speaker N:"
+    - If no speaker markers present, wrap each line as "Speaker 1: ..."
     """
     import re
     if not text:
-        return f"[{default_idx}]:"
+        return f"Speaker {default_idx}:"
+    # Normalize and split to non-empty lines
     lines = [l.strip() for l in text.replace("\\n", "\n").splitlines() if l.strip()]
-    # Accept if any line already uses supported markers
-    supported = any(re.match(r"^\s*(Speaker\s+\d+|\[\d+\])\s*:\s+", l) for l in lines)
-    if supported:
-        return "\n".join(lines)
-    # Otherwise, wrap every non-empty line with [1]: prefix
-    return "\n".join(f"[{default_idx}]: {l}" for l in lines) if lines else f"[{default_idx}]:"
+    if not lines:
+        return f"Speaker {default_idx}:"
+    # Convert any bracket markers to Speaker markers
+    converted = [re.sub(r"(?m)^\s*\[(\d+)\]\s*:\s*", r"Speaker \1: ", l) for l in lines]
+    # If any line already has Speaker N:, accept as-is
+    if any(re.match(r"^\s*Speaker\s+\d+\s*:\s+", l) for l in converted):
+        return "\n".join(converted)
+    # Otherwise, wrap every line as Speaker 1:
+    return "\n".join(f"Speaker {default_idx}: {l}" for l in converted)
 
 
 def _build_balanced_sampler(items: List[Dict[str, Any]]) -> Optional[WeightedRandomSampler]:
