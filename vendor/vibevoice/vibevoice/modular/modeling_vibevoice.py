@@ -15,6 +15,7 @@ from transformers import modeling_utils
 from transformers.modeling_utils import PreTrainedModel
 from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
 from transformers.utils import logging
+import numpy as np
 
 
 from .modular_vibevoice_tokenizer import VibeVoiceTokenizerStreamingCache, VibeVoiceAcousticTokenizerModel, VibeVoiceSemanticTokenizerModel
@@ -29,17 +30,68 @@ logger = logging.get_logger(__name__)
 if not hasattr(modeling_utils, "ALL_PARALLEL_STYLES") or modeling_utils.ALL_PARALLEL_STYLES is None:
     modeling_utils.ALL_PARALLEL_STYLES = ["tp", "none", "colwise", "rowwise"]
 
+def _vv_is_array_like(x):
+    if isinstance(x, torch.Tensor):
+        return True
+    if isinstance(x, np.ndarray):
+        return True
+    return False
+
+def _vv_peel(x):
+    # Peel [batch][stream]/nested lists until we hit tensor/ndarray
+    while isinstance(x, (list, tuple)) and len(x) > 0 and not _vv_is_array_like(x):
+        x = x[0]
+    return x
+
 def _vv_extract_frames(enc_out):
-    # New API: object with attributes
-    for attr in ("frames", "codes", "token_ids"):
-        if hasattr(enc_out, attr):
-            val = getattr(enc_out, attr)
-            if isinstance(val, (list, tuple)):
-                return val[0]
-            return val
+    """
+    Supports both new (object) and old (list/tuple) encoder outputs.
+    Returns an array/tensor of frames/tokens for 1 batch.
+    """
+    candidate_attrs = [
+        "frames", "frame_ids",
+        "codes", "tokens", "token_ids", "ids",
+        "acoustic_frames", "acoustic_codes", "acoustic_tokens", "acoustic_ids",
+        "semantic_frames", "semantic_codes", "semantic_tokens", "semantic_ids",
+        "values", "data",
+    ]
+    for name in candidate_attrs:
+        if hasattr(enc_out, name):
+            val = getattr(enc_out, name)
+            val = _vv_peel(val)
+            if _vv_is_array_like(val):
+                return val
+
+    # Mapping protocol (e.g., dict-like)
+    try:
+        items = dict(enc_out)
+        for _, v in items.items():
+            v = _vv_peel(v)
+            if _vv_is_array_like(v):
+                return v
+    except Exception:
+        pass
+
+    # Iterable fallback
+    try:
+        it = list(enc_out)
+        v = _vv_peel(it)
+        if _vv_is_array_like(v):
+            return v
+    except Exception:
+        pass
+
+    # __dict__ fallback
+    if hasattr(enc_out, "__dict__"):
+        for v in enc_out.__dict__.values():
+            v = _vv_peel(v)
+            if _vv_is_array_like(v):
+                return v
+
     # Old API: nested list/tuple [batch][stream]
     if isinstance(enc_out, (list, tuple)):
         return enc_out[0][0]
+
     raise TypeError(f"Ukjent encoder output-type: {type(enc_out)}")
 @dataclass
 class VibeVoiceCausalLMOutputWithPast(ModelOutput):
@@ -305,6 +357,13 @@ class VibeVoiceForConditionalGeneration(VibeVoicePreTrainedModel):
                             frames = torch.as_tensor(frames, device=speech_tensors.device)
                         if frames.dim() == 1:
                             frames = frames.unsqueeze(0)
+                        if not hasattr(self, "_vv_dbg_once"):
+                            self._vv_dbg_once = True
+                            try:
+                                print("ENC OUT attrs:", [a for a in dir(enc_out) if not a.startswith("_")])
+                                print("FRAMES shape:", getattr(frames, "shape", None), "dtype:", getattr(frames, "dtype", None))
+                            except Exception:
+                                pass
                     audio_tokens = frames.sample(self.model.acoustic_tokenizer.std_dist_type)[0]
 
                 elif speech_type == "vae":
