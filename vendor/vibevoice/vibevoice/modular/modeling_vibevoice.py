@@ -497,9 +497,25 @@ class VibeVoiceForConditionalGeneration(VibeVoicePreTrainedModel):
             if speech_tensors is not None:
                 # Insert features along time using a 1D time mask, resizing if needed
                 x = _vv_ensure_4d(x)
-                acoustic_input_mask = _vv_ensure_4d(acoustic_input_mask)
                 B, _, L, H = x.shape
-                time_mask = acoustic_input_mask.any(dim=-1)  # [B, 1, L]
+                if acoustic_input_mask is not None:
+                    acoustic_input_mask = _vv_ensure_4d(acoustic_input_mask)
+                    time_mask = acoustic_input_mask.any(dim=-1)  # [B, 1, L]
+                else:
+                    # Derive time mask from speech_masks if available, otherwise use all True
+                    if speech_masks is not None:
+                        sm = speech_masks
+                        if sm.dim() == 1:
+                            sm = sm.unsqueeze(0).unsqueeze(0)
+                        elif sm.dim() == 2:
+                            sm = sm.unsqueeze(1)
+                        elif sm.dim() == 3 and sm.size(1) != 1:
+                            sm = sm.any(dim=1, keepdim=True)
+                        elif sm.dim() == 4:
+                            sm = sm.any(dim=-1)
+                        time_mask = sm.bool()
+                    else:
+                        time_mask = torch.ones((B, 1, L), dtype=torch.bool, device=x.device)
                 target_len = int(time_mask[0, 0].sum().item())
                 insert_feat = speech_all_connect_features[speech_masks]  # [T, H]
                 insert_feat = _vv_resize_time(insert_feat, target_len)
@@ -521,9 +537,24 @@ class VibeVoiceForConditionalGeneration(VibeVoicePreTrainedModel):
             if speech_tensors is not None:
                 # Insert features along time using a 1D time mask, resizing if needed
                 x = _vv_ensure_4d(x)
-                acoustic_input_mask = _vv_ensure_4d(acoustic_input_mask)
                 B, _, L, H = x.shape
-                time_mask = acoustic_input_mask.any(dim=-1)  # [B, 1, L]
+                if acoustic_input_mask is not None:
+                    acoustic_input_mask = _vv_ensure_4d(acoustic_input_mask)
+                    time_mask = acoustic_input_mask.any(dim=-1)  # [B, 1, L]
+                else:
+                    if speech_masks is not None:
+                        sm = speech_masks
+                        if sm.dim() == 1:
+                            sm = sm.unsqueeze(0).unsqueeze(0)
+                        elif sm.dim() == 2:
+                            sm = sm.unsqueeze(1)
+                        elif sm.dim() == 3 and sm.size(1) != 1:
+                            sm = sm.any(dim=1, keepdim=True)
+                        elif sm.dim() == 4:
+                            sm = sm.any(dim=-1)
+                        time_mask = sm.bool()
+                    else:
+                        time_mask = torch.ones((B, 1, L), dtype=torch.bool, device=x.device)
                 target_len = int(time_mask[0, 0].sum().item())
                 insert_feat = speech_connect_features  # [T, H]
                 insert_feat = _vv_resize_time(insert_feat, target_len)
