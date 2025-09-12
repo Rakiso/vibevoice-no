@@ -1,0 +1,4 @@
+-e ./vendor/vibevoice
+-r vibevoice_no/requirements.txt
+
+

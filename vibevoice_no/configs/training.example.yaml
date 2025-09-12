@@ -1,0 +1,17 @@
+model_name_or_path: Jmica/VibeVoice7B
+train_file: data/train_24k.jsonl
+valid_file: data/valid_24k.jsonl
+output_dir: ./vibevoice_no_7b
+num_epochs: 3
+per_device_batch_size: 1
+gradient_accumulation_steps: 32
+learning_rate: 1.0e-5
+weight_decay: 0.01
+warmup_ratio: 0.05
+diffusion_weight: 1.0
+ddpm_batch_mul: 4
+bf16: true
+max_length: 8192
+augment_pitch_semitones: 0.0
+augment_tempo_pct: 0.0
+

@@ -1,0 +1,93 @@
+# --- Python & venv ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+*.egg-info/
+build/
+dist/
+.ipynb_checkpoints/
+
+# --- OS / Editor ---
+.DS_Store
+*.log
+*.swp
+.idea/
+.vscode/
+
+# --- Node (for sikkerhets skyld) ---
+node_modules/
+*.tsbuildinfo
+
+# --- Hemmeligheter ---
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# --- Data / Audio (store filer ut) ---
+data/
+dataset/
+datasets/
+audio/
+audios/
+wavs/
+wav/
+recordings/
+clips/
+resampled_audio/
+**/data/
+**/dataset*/
+**/datasets*/
+**/audio*/
+**/wavs*/
+
+*.wav
+*.flac
+*.mp3
+*.m4a
+*.ogg
+*.opus
+
+# --- Modeller / sjekkpunkter ---
+models/
+**/models/
+checkpoints/
+outputs/
+runs/
+logs/
+lightning_logs/
+wandb/
+tensorboard/
+mlruns/
+cache/
+**/.cache/
+
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+*.bin
+*.npz
+*.onnx
+
+# --- Hugging Face cache ---
+.huggingface/
+**/.huggingface/
+**/.hf_cache/
+**/huggingface/cache/**
+
+# --- Diverse temp ---
+tmp/
+temp/
+*.bak
+*.tmp
+
+# --- Project-specific ---
+preprocess*.log
+preprocess_full.*
+vibevoice_no/data_raw/wavs/
+vibevoice_no/data_processed/

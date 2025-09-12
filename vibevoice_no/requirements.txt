@@ -1,0 +1,16 @@
+torch
+transformers>=4.51.3
+accelerate
+datasets
+librosa
+soundfile
+torchaudio
+numpy
+scipy
+peft>=0.11.0
+sentencepiece
+tqdm
+typing_extensions
+pyyaml
+speechbrain
+

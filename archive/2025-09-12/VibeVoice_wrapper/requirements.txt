@@ -1,0 +1,4 @@
+-e ./VibeVoice-main
+-r vibevoice_no/requirements.txt
+
+

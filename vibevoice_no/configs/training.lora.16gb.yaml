@@ -1,0 +1,17 @@
+model_name_or_path: vibevoice_no/vibevoice_no_7b
+train_file: vibevoice_no/data/train_24k.jsonl
+valid_file: vibevoice_no/data/valid_24k.jsonl
+output_dir: ./vibevoice_no_7b_lora_16g
+num_epochs: 3
+per_device_batch_size: 1
+gradient_accumulation_steps: 64
+learning_rate: 1.0e-5
+weight_decay: 0.01
+warmup_ratio: 0.05
+diffusion_weight: 1.0
+ddpm_batch_mul: 4
+bf16: true
+max_length: 8192
+augment_pitch_semitones: 0.0
+augment_tempo_pct: 0.0
+
