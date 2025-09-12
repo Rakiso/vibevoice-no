@@ -109,7 +109,8 @@ def main() -> None:
     seq_len = int(inputs["input_ids"].shape[1])
     # No speech frames to insert by default; masks are all False
     speech_input_mask = torch.zeros((batch_size, seq_len), dtype=torch.bool)
-    speech_masks = torch.zeros((batch_size, seq_len), dtype=torch.bool)
+    # Match acoustic time steps (use 1 step for tiny dummy audio)
+    speech_masks = torch.zeros((batch_size, 1), dtype=torch.bool)
     # Tiny dummy audio (silence) just to satisfy API; vendor will ignore if masks are False
     num_samples = max(1, int(TARGET_SR * min(args.seconds, 0.1)))
     speech_tensors = torch.zeros((batch_size, num_samples), dtype=torch.float32)
