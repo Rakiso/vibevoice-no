@@ -112,10 +112,44 @@ def _vv_ensure_4d(x: torch.Tensor) -> torch.Tensor:
     if x.dim() == 4:
         return x
     if x.dim() == 3:
-        return x.unsqueeze(1)
+        # Treat [B, L, H]
+        return x.unsqueeze(1) if x.size(-1) > 1 else x.unsqueeze(-1)
     if x.dim() == 2:
-        return x.unsqueeze(0).unsqueeze(1)
+        B, L = x.shape
+        return x.view(B, 1, L, 1)
     raise ValueError(f"unexpected x.dim={x.dim()} shape={x.shape}")
+
+def _vv_time_mask(mask: Optional[torch.Tensor], L: int, device: torch.device) -> Optional[torch.Tensor]:
+    """
+    Return [B,1,L] mask from various shapes:
+    - [B,L] -> [B,1,L]
+    - [B,1,L] -> [B,1,L]
+    - [B,L,H] or [B,1,L,H] -> any over H -> [B,1,L]
+    """
+    if mask is None:
+        return None
+    m = mask
+    if m.dim() == 4:
+        return m.any(dim=-1)
+    if m.dim() == 3:
+        return m if m.size(1) == 1 else m.any(dim=-1, keepdim=True)
+    if m.dim() == 2:
+        return m.unsqueeze(1)
+    raise ValueError(f"unexpected mask.dim={m.dim()} shape={m.shape}")
+
+def _vv_to_2d_mask(mask: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
+    if mask is None:
+        return None
+    m = mask
+    if m.dim() == 4:
+        m = m.any(dim=-1).squeeze(1)
+    elif m.dim() == 3:
+        m = m.squeeze(1) if m.size(1) == 1 else m.any(dim=-1)
+    elif m.dim() == 2:
+        pass
+    else:
+        raise ValueError(f"unexpected attention_mask dim={m.dim()} shape={m.shape}")
+    return m.to(dtype=torch.long)
 @dataclass
 class VibeVoiceCausalLMOutputWithPast(ModelOutput):
     loss: Optional[torch.FloatTensor] = None
@@ -570,6 +604,10 @@ class VibeVoiceForConditionalGeneration(VibeVoicePreTrainedModel):
                     insert_feat = insert_feat.to(device=x.device, dtype=x.dtype).contiguous()
                     x = x.clone()
                     x[0, 0, idx, :] = insert_feat
+
+        # Back to 3D for LLM and normalize attention mask
+        x = x.squeeze(1)  # [B, L, H]
+        attention_mask = _vv_to_2d_mask(attention_mask)
 
         outputs = self.model(
             input_ids=None,
