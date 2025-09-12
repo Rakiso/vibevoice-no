@@ -116,8 +116,6 @@ def main() -> None:
         weight_decay=float(cfg.get("weight_decay", 0.01)),
         warmup_ratio=float(cfg.get("warmup_ratio", 0.05)),
         logging_steps=50,
-        evaluation_strategy="steps",
-        eval_steps=200,
         save_steps=200,
         save_total_limit=2,
         bf16=bool(cfg.get("bf16", True)) and torch.cuda.is_available(),
@@ -125,7 +123,7 @@ def main() -> None:
         remove_unused_columns=False,
         report_to=list(cfg.get("report_to", ["tensorboard"])),
         logging_dir=str(cfg.get("logging_dir", "./runs")),
-        load_best_model_at_end=bool(cfg.get("load_best_model_at_end", False)),
+        # Keep args minimal for broad Transformers compatibility
     )
 
     trainer = Trainer(
