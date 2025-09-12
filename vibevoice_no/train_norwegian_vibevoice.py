@@ -104,7 +104,7 @@ class TtsDataCollator:
             audio_path = str(rec.get("audio"))
             y, sr = self._load_audio(audio_path)
             y = self._augment(y, sr)
-            texts.append(text)
+            texts.append(ensure_script_format(text))
             audios.append(y.astype(np.float32))
 
         # Try common processor signatures
@@ -131,6 +131,16 @@ class TtsDataCollator:
         )
         proc_out["sampling_rate"] = torch.tensor([self.target_sr] * len(audios))
         return proc_out
+
+
+def ensure_script_format(text: str, default_speaker: str = "NARRATOR") -> str:
+    if not text:
+        return f"{default_speaker}:"
+    lines = [l.strip() for l in text.replace("\\n", "\n").splitlines() if l.strip()]
+    has_speaker = any((":" in l and l.split(":", 1)[0].strip() and len(l.split(":", 1)) == 2) for l in lines)
+    if not has_speaker:
+        return "\n".join(f"{default_speaker}: {l}" for l in lines) if lines else f"{default_speaker}:"
+    return "\n".join(lines)
 
 
 def _build_balanced_sampler(items: List[Dict[str, Any]]) -> Optional[WeightedRandomSampler]:
@@ -211,7 +221,7 @@ def main() -> None:
         weight_decay=float(cfg.get("weight_decay", 0.01)),
         warmup_ratio=float(cfg.get("warmup_ratio", 0.05)),
         logging_steps=50,
-        evaluation_strategy="steps",
+        eval_strategy="steps",
         eval_steps=200,
         save_steps=200,
         save_total_limit=2,
