@@ -15,6 +15,7 @@ from transformers import modeling_utils
 from transformers.modeling_utils import PreTrainedModel
 from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
 from transformers.utils import logging
+import torch.nn.functional as F
 import numpy as np
 
 
@@ -93,6 +94,18 @@ def _vv_extract_frames(enc_out):
         return enc_out[0][0]
 
     raise TypeError(f"Ukjent encoder output-type: {type(enc_out)}")
+
+def _vv_resize_time(feat: torch.Tensor, target_len: int) -> torch.Tensor:
+    # feat: [T, D]
+    if feat.dim() != 2:
+        raise ValueError(f"expected [T, D], got {feat.shape}")
+    T, D = feat.shape
+    if T == target_len:
+        return feat
+    x = feat.transpose(0, 1).unsqueeze(0)  # [1, D, T]
+    x = F.interpolate(x, size=target_len, mode="linear", align_corners=False)
+    x = x.squeeze(0).transpose(0, 1).contiguous()  # [target_len, D]
+    return x
 @dataclass
 class VibeVoiceCausalLMOutputWithPast(ModelOutput):
     loss: Optional[torch.FloatTensor] = None
@@ -472,10 +485,19 @@ class VibeVoiceForConditionalGeneration(VibeVoicePreTrainedModel):
                     return_unmask=True
                 )
             if speech_tensors is not None:
+                # Insert features along time using a 1D time mask, resizing if needed
+                B, _, L, H = x.shape
+                time_mask = acoustic_input_mask.any(dim=-1)  # [B, 1, L]
+                target_len = int(time_mask[0, 0].sum().item())
+                insert_feat = speech_all_connect_features[speech_masks]  # [T, H]
+                insert_feat = _vv_resize_time(insert_feat, target_len)
+                x = x.clone()
                 if semantic_speech_all_connect_features is not None:
-                    x[acoustic_input_mask] = speech_all_connect_features[speech_masks] + semantic_speech_all_connect_features[speech_masks]
+                    sem_feat = semantic_speech_all_connect_features[speech_masks]
+                    sem_feat = _vv_resize_time(sem_feat, target_len)
+                    x[0, 0, time_mask[0, 0], :] = insert_feat + sem_feat
                 else:
-                    x[acoustic_input_mask] = speech_all_connect_features[speech_masks]
+                    x[0, 0, time_mask[0, 0], :] = insert_feat
                 speech_features = speech_all_features[speeches_loss_input.unsqueeze(-1) & speech_masks] # only part audio need diffuse
                 speech_connect_features = speech_all_connect_features[speeches_loss_input.unsqueeze(-1) & speech_masks]
         else:
@@ -485,7 +507,14 @@ class VibeVoiceForConditionalGeneration(VibeVoicePreTrainedModel):
                     speech_type=kwargs.get("speech_type", "audio"),
                 )
             if speech_tensors is not None:
-                x[acoustic_input_mask] = speech_connect_features
+                # Insert features along time using a 1D time mask, resizing if needed
+                B, _, L, H = x.shape
+                time_mask = acoustic_input_mask.any(dim=-1)  # [B, 1, L]
+                target_len = int(time_mask[0, 0].sum().item())
+                insert_feat = speech_connect_features  # [T, H]
+                insert_feat = _vv_resize_time(insert_feat, target_len)
+                x = x.clone()
+                x[0, 0, time_mask[0, 0], :] = insert_feat
 
         outputs = self.model(
             input_ids=None,
