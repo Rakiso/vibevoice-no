@@ -37,6 +37,36 @@ def build_prompt(text: str, seconds: float) -> str:
     return prompt
 
 
+def _to_numpy_audio(x: object, seconds: float) -> np.ndarray:
+    """Coerce various audio-like objects to 1D float32 numpy array."""
+    target_len = max(1, int(seconds * TARGET_SR))
+    arr: np.ndarray | None = None
+    if isinstance(x, torch.Tensor):
+        arr = x.detach().cpu().float().numpy()
+    elif isinstance(x, np.ndarray):
+        arr = x.astype(np.float32, copy=False)
+    elif isinstance(x, (list, tuple)):
+        # Pick the first tensor/ndarray element if present
+        for item in x:
+            if isinstance(item, torch.Tensor):
+                arr = item.detach().cpu().float().numpy()
+                break
+            if isinstance(item, np.ndarray):
+                arr = item.astype(np.float32, copy=False)
+                break
+    if arr is None:
+        return np.zeros(target_len, dtype=np.float32)
+    arr = np.squeeze(arr)
+    if arr.ndim > 1:
+        # Flatten multi-channel to mono
+        arr = arr.reshape(-1)
+    if arr.size == 0:
+        arr = np.zeros(target_len, dtype=np.float32)
+    # Remove NaN/Inf
+    arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
+    return arr.astype(np.float32, copy=False)
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--model_dir", required=True)
@@ -140,9 +170,8 @@ def main() -> None:
             else:
                 audio = np.zeros(int(args.seconds * TARGET_SR), dtype=np.float32)
 
-    if isinstance(audio, torch.Tensor):
-        audio = audio.detach().cpu().float().numpy()
-    sf.write(args.out, audio, TARGET_SR)
+    audio_np = _to_numpy_audio(audio, args.seconds)
+    sf.write(args.out, audio_np, TARGET_SR)
     print(f"Saved {args.out}")
 
 
