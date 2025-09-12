@@ -104,6 +104,16 @@ def main() -> None:
     if not use_device_map_auto:
         inputs = {k: v.to(device) for k, v in inputs.items()}
 
+    # Build minimal placeholder speech inputs expected by vendor generate()
+    batch_size = int(inputs["input_ids"].shape[0])
+    seq_len = int(inputs["input_ids"].shape[1])
+    # No speech frames to insert by default; masks are all False
+    speech_input_mask = torch.zeros((batch_size, seq_len), dtype=torch.bool)
+    speech_masks = torch.zeros((batch_size, seq_len), dtype=torch.bool)
+    # Tiny dummy audio (silence) just to satisfy API; vendor will ignore if masks are False
+    num_samples = max(1, int(TARGET_SR * min(args.seconds, 0.1)))
+    speech_tensors = torch.zeros((batch_size, num_samples), dtype=torch.float32)
+
     with torch.no_grad():
         gen_out = model.generate(
             input_ids=inputs["input_ids"],
@@ -112,6 +122,9 @@ def main() -> None:
             max_new_tokens=1,
             show_progress_bar=False,
             return_speech=True,
+            speech_tensors=speech_tensors,
+            speech_masks=speech_masks,
+            speech_input_mask=speech_input_mask,
         )
         audio = None
         if hasattr(gen_out, "speech_outputs"):
