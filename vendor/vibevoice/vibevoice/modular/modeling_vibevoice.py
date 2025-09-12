@@ -517,15 +517,21 @@ class VibeVoiceForConditionalGeneration(VibeVoicePreTrainedModel):
                     else:
                         time_mask = torch.ones((B, 1, L), dtype=torch.bool, device=x.device)
                 target_len = int(time_mask[0, 0].sum().item())
-                insert_feat = speech_all_connect_features[speech_masks]  # [T, H]
-                insert_feat = _vv_resize_time(insert_feat, target_len)
-                x = x.clone()
-                if semantic_speech_all_connect_features is not None:
-                    sem_feat = semantic_speech_all_connect_features[speech_masks]
-                    sem_feat = _vv_resize_time(sem_feat, target_len)
-                    x[0, 0, time_mask[0, 0], :] = insert_feat + sem_feat
-                else:
-                    x[0, 0, time_mask[0, 0], :] = insert_feat
+                idx = time_mask[0, 0].nonzero(as_tuple=True)[0]
+                if idx.numel() > 0:
+                    insert_feat = speech_all_connect_features[speech_masks]  # [T, H]
+                    if insert_feat.size(0) != target_len:
+                        insert_feat = _vv_resize_time(insert_feat, target_len)
+                    insert_feat = insert_feat.to(device=x.device, dtype=x.dtype).contiguous()
+                    x = x.clone()
+                    if semantic_speech_all_connect_features is not None:
+                        sem_feat = semantic_speech_all_connect_features[speech_masks]
+                        if sem_feat.size(0) != target_len:
+                            sem_feat = _vv_resize_time(sem_feat, target_len)
+                        sem_feat = sem_feat.to(device=x.device, dtype=x.dtype).contiguous()
+                        x[0, 0, idx, :] = (insert_feat + sem_feat)
+                    else:
+                        x[0, 0, idx, :] = insert_feat
                 speech_features = speech_all_features[speeches_loss_input.unsqueeze(-1) & speech_masks] # only part audio need diffuse
                 speech_connect_features = speech_all_connect_features[speeches_loss_input.unsqueeze(-1) & speech_masks]
         else:
@@ -556,10 +562,14 @@ class VibeVoiceForConditionalGeneration(VibeVoicePreTrainedModel):
                     else:
                         time_mask = torch.ones((B, 1, L), dtype=torch.bool, device=x.device)
                 target_len = int(time_mask[0, 0].sum().item())
-                insert_feat = speech_connect_features  # [T, H]
-                insert_feat = _vv_resize_time(insert_feat, target_len)
-                x = x.clone()
-                x[0, 0, time_mask[0, 0], :] = insert_feat
+                idx = time_mask[0, 0].nonzero(as_tuple=True)[0]
+                if idx.numel() > 0:
+                    insert_feat = speech_connect_features  # [T, H]
+                    if insert_feat.size(0) != target_len:
+                        insert_feat = _vv_resize_time(insert_feat, target_len)
+                    insert_feat = insert_feat.to(device=x.device, dtype=x.dtype).contiguous()
+                    x = x.clone()
+                    x[0, 0, idx, :] = insert_feat
 
         outputs = self.model(
             input_ids=None,
