@@ -181,14 +181,45 @@ class TtsDataCollator:
                 return_tensors="pt",
                 padding=True,
             )
+            # Attach acoustic masks on token timeline
+            out = proc_out.data if hasattr(proc_out, "data") else proc_out
+            try:
+                ids = out["input_ids"] if isinstance(out, dict) else getattr(out, "input_ids")
+                speech_masks = out.get("speech_masks") if isinstance(out, dict) else getattr(out, "speech_masks", None)
+                B, L = ids.shape
+                acoustic_input_mask = torch.zeros(B, L, dtype=torch.bool, device=ids.device)
+                if isinstance(speech_masks, torch.Tensor):
+                    lengths = speech_masks.sum(dim=-1).to(torch.long)
+                else:
+                    lengths = torch.zeros(B, dtype=torch.long, device=ids.device)
+                try:
+                    speech_start_id = getattr(self.processor.tokenizer, "speech_start_id")
+                except Exception:
+                    speech_start_id = getattr(self.processor.tokenizer, "_speech_start_id", None)
+                for b in range(B):
+                    length = int(lengths[b].item()) if lengths.numel() else 0
+                    if length <= 0:
+                        continue
+                    start = L - length
+                    if speech_start_id is not None:
+                        where = (ids[b] == speech_start_id).nonzero(as_tuple=False).view(-1)
+                        if where.numel() > 0:
+                            start = int(where[0].item()) + 1
+                            start = max(0, min(L - length, start))
+                    acoustic_input_mask[b, start:start + length] = True
+                out["acoustic_input_mask"] = acoustic_input_mask
+                out["acoustic_loss_mask"] = acoustic_input_mask.clone()
+            except Exception:
+                pass
+
             if not self._vv_debug_once:
                 self._vv_debug_once = True
                 try:
-                    sem = proc_out.get("speech_semantic_tensors", None) if isinstance(proc_out, dict) else getattr(proc_out, "speech_semantic_tensors", None)
+                    sem = out.get("speech_semantic_tensors", None) if isinstance(out, dict) else getattr(out, "speech_semantic_tensors", None)
                     print("VibeVoice DEBUG | sem type:", type(sem), "shape:", getattr(sem, "shape", None))
                 except Exception:
                     pass
-            return proc_out.data if hasattr(proc_out, "data") else proc_out
+            return out
         except Exception:
             pass
 
@@ -200,7 +231,36 @@ class TtsDataCollator:
                 return_tensors="pt",
                 padding=True,
             )
-            return proc_out.data if hasattr(proc_out, "data") else proc_out
+            out = proc_out.data if hasattr(proc_out, "data") else proc_out
+            try:
+                ids = out["input_ids"] if isinstance(out, dict) else getattr(out, "input_ids")
+                speech_masks = out.get("speech_masks") if isinstance(out, dict) else getattr(out, "speech_masks", None)
+                B, L = ids.shape
+                acoustic_input_mask = torch.zeros(B, L, dtype=torch.bool, device=ids.device)
+                if isinstance(speech_masks, torch.Tensor):
+                    lengths = speech_masks.sum(dim=-1).to(torch.long)
+                else:
+                    lengths = torch.zeros(B, dtype=torch.long, device=ids.device)
+                try:
+                    speech_start_id = getattr(self.processor.tokenizer, "speech_start_id")
+                except Exception:
+                    speech_start_id = getattr(self.processor.tokenizer, "_speech_start_id", None)
+                for b in range(B):
+                    length = int(lengths[b].item()) if lengths.numel() else 0
+                    if length <= 0:
+                        continue
+                    start = L - length
+                    if speech_start_id is not None:
+                        where = (ids[b] == speech_start_id).nonzero(as_tuple=False).view(-1)
+                        if where.numel() > 0:
+                            start = int(where[0].item()) + 1
+                            start = max(0, min(L - length, start))
+                    acoustic_input_mask[b, start:start + length] = True
+                out["acoustic_input_mask"] = acoustic_input_mask
+                out["acoustic_loss_mask"] = acoustic_input_mask.clone()
+            except Exception:
+                pass
+            return out
         except Exception:
             pass
 
@@ -213,7 +273,36 @@ class TtsDataCollator:
                 return_tensors="pt",
                 padding=True,
             )
-            return proc_out.data if hasattr(proc_out, "data") else proc_out
+            out = proc_out.data if hasattr(proc_out, "data") else proc_out
+            try:
+                ids = out["input_ids"] if isinstance(out, dict) else getattr(out, "input_ids")
+                speech_masks = out.get("speech_masks") if isinstance(out, dict) else getattr(out, "speech_masks", None)
+                B, L = ids.shape
+                acoustic_input_mask = torch.zeros(B, L, dtype=torch.bool, device=ids.device)
+                if isinstance(speech_masks, torch.Tensor):
+                    lengths = speech_masks.sum(dim=-1).to(torch.long)
+                else:
+                    lengths = torch.zeros(B, dtype=torch.long, device=ids.device)
+                try:
+                    speech_start_id = getattr(self.processor.tokenizer, "speech_start_id")
+                except Exception:
+                    speech_start_id = getattr(self.processor.tokenizer, "_speech_start_id", None)
+                for b in range(B):
+                    length = int(lengths[b].item()) if lengths.numel() else 0
+                    if length <= 0:
+                        continue
+                    start = L - length
+                    if speech_start_id is not None:
+                        where = (ids[b] == speech_start_id).nonzero(as_tuple=False).view(-1)
+                        if where.numel() > 0:
+                            start = int(where[0].item()) + 1
+                            start = max(0, min(L - length, start))
+                    acoustic_input_mask[b, start:start + length] = True
+                out["acoustic_input_mask"] = acoustic_input_mask
+                out["acoustic_loss_mask"] = acoustic_input_mask.clone()
+            except Exception:
+                pass
+            return out
         except Exception:
             pass
 

@@ -587,7 +587,9 @@ class VibeVoiceForConditionalGeneration(VibeVoicePreTrainedModel):
         # --- Diffusion Loss Calculation ---
         diffusion_loss = None
         # This block is executed only if we are in a context that involves speech.
-        if speech_tensors is not None and acoustic_loss_mask.sum().item() > 0:
+        if (speech_tensors is not None 
+            and acoustic_loss_mask is not None 
+            and acoustic_loss_mask.any()):
             condition_features = hidden_states[acoustic_loss_mask]
             
             speech_len, latent_size = speech_features.shape
