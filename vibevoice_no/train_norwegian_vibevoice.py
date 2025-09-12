@@ -5,13 +5,12 @@ import argparse
 import json
 import os
 import random
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
+from torch.utils.data import Dataset, WeightedRandomSampler
 from transformers import (
     Trainer,
     TrainingArguments,
@@ -19,11 +18,15 @@ from transformers import (
 )
 import librosa
 import re
-import soundfile as sf
-import yaml
+import soundfile as sf  # type: ignore[import]
+import yaml  # type: ignore[import]
 
-from vibevoice.processor.vibevoice_processor import VibeVoiceProcessor
-from vibevoice.modular.modeling_vibevoice import VibeVoiceForConditionalGeneration
+from vibevoice.processor.vibevoice_processor import (  # type: ignore[import]
+    VibeVoiceProcessor,
+)
+from vibevoice.modular.modeling_vibevoice import (  # type: ignore[import]
+    VibeVoiceForConditionalGeneration,
+)
 
 
 def _bf16_if_cuda() -> Optional[torch.dtype]:
@@ -82,7 +85,7 @@ class TtsDataCollator:
             except Exception:
                 y = librosa.resample(y=y, orig_sr=sr, target_sr=self.target_sr)
             sr = self.target_sr
-        return y, sr
+        return y, int(sr)
 
     def _load_wav_24k(self, path: str) -> Tuple[np.ndarray, int]:
         y, sr = sf.read(path, dtype="float32", always_2d=False)
@@ -97,7 +100,16 @@ class TtsDataCollator:
             sr = 24000
         if not np.isfinite(y).all():
             y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0).astype("float32")
-        return y.astype("float32"), sr
+        # Ensure integer sample rate
+        sr_i: int
+        if isinstance(sr, (int, np.integer)):
+            sr_i = int(sr)
+        else:
+            try:
+                sr_i = int(float(sr))  # type: ignore[arg-type]
+            except Exception:
+                sr_i = 24000
+        return y.astype("float32"), int(sr_i)
 
     def _augment(self, y: np.ndarray, sr: int) -> np.ndarray:
         if abs(self.augment_pitch_semitones) > 1e-6:
@@ -160,7 +172,12 @@ class TtsDataCollator:
 
             # Parse speakers in the script and attach reference waveform objects
             try:
-                speaker_ids = sorted(set(int(m.group(1)) for m in re.finditer(r"(?m)^\s*Speaker\s+(\d+)\s*:\s+", script)))
+                speaker_ids = sorted(
+                    set(
+                        int(m.group(1))
+                        for m in re.finditer(r"(?m)^\s*Speaker\s+(\d+)\s*:\s+", script)
+                    )
+                )
             except Exception:
                 speaker_ids = []
             if not speaker_ids:
@@ -184,8 +201,14 @@ class TtsDataCollator:
             # Attach acoustic masks on token timeline
             out = proc_out.data if hasattr(proc_out, "data") else proc_out
             try:
-                ids = out["input_ids"] if isinstance(out, dict) else getattr(out, "input_ids")
-                speech_masks = out.get("speech_masks") if isinstance(out, dict) else getattr(out, "speech_masks", None)
+                ids = (
+                    out["input_ids"] if isinstance(out, dict) else getattr(out, "input_ids")
+                )
+                speech_masks = (
+                    out.get("speech_masks")
+                    if isinstance(out, dict)
+                    else getattr(out, "speech_masks", None)
+                )
                 B, L = ids.shape
                 acoustic_input_mask = torch.zeros(B, L, dtype=torch.bool, device=ids.device)
                 if isinstance(speech_masks, torch.Tensor):
@@ -195,7 +218,11 @@ class TtsDataCollator:
                 try:
                     speech_start_id = getattr(self.processor.tokenizer, "speech_start_id")
                 except Exception:
-                    speech_start_id = getattr(self.processor.tokenizer, "_speech_start_id", None)
+                    speech_start_id = getattr(
+                        self.processor.tokenizer,
+                        "_speech_start_id",
+                        None,
+                    )
                 for b in range(B):
                     length = int(lengths[b].item()) if lengths.numel() else 0
                     if length <= 0:
@@ -211,12 +238,20 @@ class TtsDataCollator:
                 out["acoustic_loss_mask"] = acoustic_input_mask.clone()
                 # --- Labels for LM loss ---
                 try:
-                    attn = out.get("attention_mask") if isinstance(out, dict) else getattr(out, "attention_mask", None)
+                    attn = (
+                        out.get("attention_mask")
+                        if isinstance(out, dict)
+                        else getattr(out, "attention_mask", None)
+                    )
                     labels = ids.clone()
                     IGNORE = -100
                     if attn is not None:
                         labels[attn == 0] = IGNORE
-                    ac_in_mask = out.get("acoustic_input_mask") if isinstance(out, dict) else getattr(out, "acoustic_input_mask", None)
+                    ac_in_mask = (
+                        out.get("acoustic_input_mask")
+                        if isinstance(out, dict)
+                        else getattr(out, "acoustic_input_mask", None)
+                    )
                     if ac_in_mask is not None:
                         labels[ac_in_mask] = IGNORE
                     for tok_name in ("speech_start_id", "speech_end_id", "_speech_start_id", "_speech_end_id"):
@@ -254,7 +289,11 @@ class TtsDataCollator:
             out = proc_out.data if hasattr(proc_out, "data") else proc_out
             try:
                 ids = out["input_ids"] if isinstance(out, dict) else getattr(out, "input_ids")
-                speech_masks = out.get("speech_masks") if isinstance(out, dict) else getattr(out, "speech_masks", None)
+                speech_masks = (
+                    out.get("speech_masks")
+                    if isinstance(out, dict)
+                    else getattr(out, "speech_masks", None)
+                )
                 B, L = ids.shape
                 acoustic_input_mask = torch.zeros(B, L, dtype=torch.bool, device=ids.device)
                 if isinstance(speech_masks, torch.Tensor):
@@ -264,7 +303,11 @@ class TtsDataCollator:
                 try:
                     speech_start_id = getattr(self.processor.tokenizer, "speech_start_id")
                 except Exception:
-                    speech_start_id = getattr(self.processor.tokenizer, "_speech_start_id", None)
+                    speech_start_id = getattr(
+                        self.processor.tokenizer,
+                        "_speech_start_id",
+                        None,
+                    )
                 for b in range(B):
                     length = int(lengths[b].item()) if lengths.numel() else 0
                     if length <= 0:
@@ -316,7 +359,11 @@ class TtsDataCollator:
             out = proc_out.data if hasattr(proc_out, "data") else proc_out
             try:
                 ids = out["input_ids"] if isinstance(out, dict) else getattr(out, "input_ids")
-                speech_masks = out.get("speech_masks") if isinstance(out, dict) else getattr(out, "speech_masks", None)
+                speech_masks = (
+                    out.get("speech_masks")
+                    if isinstance(out, dict)
+                    else getattr(out, "speech_masks", None)
+                )
                 B, L = ids.shape
                 acoustic_input_mask = torch.zeros(B, L, dtype=torch.bool, device=ids.device)
                 if isinstance(speech_masks, torch.Tensor):
@@ -326,7 +373,11 @@ class TtsDataCollator:
                 try:
                     speech_start_id = getattr(self.processor.tokenizer, "speech_start_id")
                 except Exception:
-                    speech_start_id = getattr(self.processor.tokenizer, "_speech_start_id", None)
+                    speech_start_id = getattr(
+                        self.processor.tokenizer,
+                        "_speech_start_id",
+                        None,
+                    )
                 for b in range(B):
                     length = int(lengths[b].item()) if lengths.numel() else 0
                     if length <= 0:
@@ -406,16 +457,16 @@ def ensure_script_format(text: str, default_idx: int = 1) -> str:
     if not text:
         return f"Speaker {default_idx}:"
     # Normalize and split to non-empty lines
-    lines = [l.strip() for l in text.replace("\\n", "\n").splitlines() if l.strip()]
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     if not lines:
         return f"Speaker {default_idx}:"
     # Convert any bracket markers to Speaker markers
-    converted = [re.sub(r"(?m)^\s*\[(\d+)\]\s*:\s*", r"Speaker \1: ", l) for l in lines]
+    converted = [re.sub(r"(?m)^\s*\[(\d+)\]\s*:\s*", r"Speaker \1: ", ln) for ln in lines]
     # If any line already has Speaker N:, accept as-is
-    if any(re.match(r"^\s*Speaker\s+\d+\s*:\s+", l) for l in converted):
+    if any(re.match(r"^\s*Speaker\s+\d+\s*:\s+", ln) for ln in converted):
         return "\n".join(converted)
     # Otherwise, wrap every line as Speaker 1:
-    return "\n".join(f"Speaker {default_idx}: {l}" for l in converted)
+    return "\n".join(f"Speaker {default_idx}: {ln}" for ln in converted)
 
 
 def _build_balanced_sampler(items: List[Dict[str, Any]]) -> Optional[WeightedRandomSampler]:
@@ -506,7 +557,7 @@ def main() -> None:
         report_to=["none"],
     )
 
-    trainer = Trainer(
+    trainer = Trainer(  # type: ignore[misc]
         model=model,
         args=training_args,
         train_dataset=train_ds,
@@ -519,8 +570,8 @@ def main() -> None:
     if eval_sampler is not None:
         trainer._get_eval_sampler = lambda x: eval_sampler  # type: ignore
 
-    trainer.train()
-    trainer.save_model(training_args.output_dir)
+    trainer.train()  # type: ignore[attr-defined]
+    trainer.save_model(training_args.output_dir)  # type: ignore[attr-defined]
     try:
         processor.save_pretrained(training_args.output_dir)
     except Exception:
@@ -529,5 +580,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-

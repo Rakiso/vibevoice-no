@@ -4,7 +4,7 @@ import math
 from typing import Optional  # noqa: F401
 
 import numpy as np
-import soundfile as sf
+import soundfile as sf  # type: ignore[import]
 import torch
 
 from vibevoice.modular.modeling_vibevoice_inference import (  # type: ignore[import]
@@ -113,9 +113,9 @@ def main() -> None:
     )
     processor = VibeVoiceProcessor.from_pretrained(args.model_dir)
     tokenizer = processor.tokenizer
-    tokenizer.add_special_tokens(
-        {"additional_special_tokens": [VISION_START, VISION_PAD, VISION_END]}
-    )
+    tokenizer.add_special_tokens({
+        "additional_special_tokens": [VISION_START, VISION_PAD, VISION_END]
+    })
     try:
         model.resize_token_embeddings(len(tokenizer))
     except Exception:
@@ -177,5 +177,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-

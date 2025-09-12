@@ -1,19 +1,15 @@
 #!/usr/bin/env python
 from __future__ import annotations
-
 import argparse
-import json
 from pathlib import Path
-from typing import Any, Dict, List
-
-import numpy as np
+from typing import List
 import torch
 from transformers import (
     Trainer,
     TrainingArguments,
     set_seed,
 )
-import yaml
+import yaml  # type: ignore[import]
 
 from train_norwegian_vibevoice import (
     JsonlTtsDataset,
@@ -22,8 +18,12 @@ from train_norwegian_vibevoice import (
     _build_balanced_sampler,
 )
 
-from vibevoice.processor.vibevoice_processor import VibeVoiceProcessor
-from vibevoice.modular.modeling_vibevoice import VibeVoiceForConditionalGeneration
+from vibevoice.processor.vibevoice_processor import (  # type: ignore[import]
+    VibeVoiceProcessor,
+)
+from vibevoice.modular.modeling_vibevoice import (  # type: ignore[import]
+    VibeVoiceForConditionalGeneration,
+)
 
 from peft import LoraConfig, get_peft_model
 
@@ -140,7 +140,7 @@ def main() -> None:
         # Keep args minimal for broad Transformers compatibility
     )
 
-    trainer = Trainer(
+    trainer = Trainer(  # type: ignore[misc]
         model=model,
         args=training_args,
         train_dataset=train_ds,
@@ -152,9 +152,9 @@ def main() -> None:
     if eval_sampler is not None:
         trainer._get_eval_sampler = lambda x: eval_sampler  # type: ignore
 
-    trainer.train()
+    trainer.train()  # type: ignore[attr-defined]
     # Save adapter only
-    trainer.model.save_pretrained(training_args.output_dir)
+    trainer.model.save_pretrained(training_args.output_dir)  # type: ignore[attr-defined]
     try:
         processor.save_pretrained(training_args.output_dir)
     except Exception:
@@ -163,5 +163,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-
