@@ -108,8 +108,9 @@ archive/
 # Base model weights directory
 vibevoice_no/vibevoice_no_7b/
 
-# Local LoRA export directory (keep out of git)
-vibevoice_no_7b_lora_24g/
+# Allow tracking of a specific local LoRA export directory
+!vibevoice_no_7b_lora_24g/
+!vibevoice_no_7b_lora_24g/**
 
 # Training checkpoint directories (LoRA/Trainer)
 checkpoint-*/
