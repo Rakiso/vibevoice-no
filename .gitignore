@@ -94,3 +94,20 @@ vibevoice_no/data_processed/
 
 vibevoice_no/data_raw/wavs/*
 !vibevoice_no/data_raw/wavs/.gitkeep
+
+# --- Archives ---
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+
+# --- Large local directories (do not push) ---
+archive/
+**/archive/
+
+# Base model weights directory
+vibevoice_no/vibevoice_no_7b/
+
+# Training checkpoint directories (LoRA/Trainer)
+checkpoint-*/
+checkpoint-*/**

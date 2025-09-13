@@ -13,6 +13,7 @@ from vibevoice.modular.modeling_vibevoice_inference import (  # type: ignore[imp
 from vibevoice.processor.vibevoice_processor import (  # type: ignore[import]
     VibeVoiceProcessor,
 )
+from peft import PeftModel  # type: ignore[import]
 
 
 VISION_START = "<|vision_start|>"
@@ -73,6 +74,23 @@ def main() -> None:
     p.add_argument("--text", required=True)
     p.add_argument("--seconds", type=float, default=3.0)
     p.add_argument("--out", type=str, default="out.wav")
+    p.add_argument(
+        "--adapter_dir",
+        type=str,
+        default=None,
+        help="Optional path to a PEFT/LoRA adapter checkpoint to apply",
+    )
+    p.add_argument(
+        "--device",
+        choices=["auto", "cpu", "mps", "cuda"],
+        default="auto",
+        help="Device to run on. 'auto' prefers CUDA, then MPS, else CPU.",
+    )
+    p.add_argument(
+        "--dry_run",
+        action="store_true",
+        help="Only load model/adapter and exit (useful to validate on low-memory Macs)",
+    )
     # Memory/placement controls
     p.add_argument(
         "--dtype",
@@ -90,11 +108,28 @@ def main() -> None:
     )
     args = p.parse_args()
 
+    # Resolve device preference
+    requested = args.device
     is_cuda = torch.cuda.is_available()
+    has_mps = getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available()
+    if requested == "auto":
+        if is_cuda:
+            device_str = "cuda"
+        elif has_mps:
+            device_str = "mps"
+        else:
+            device_str = "cpu"
+    else:
+        device_str = requested
 
-    # Choose dtype
+    # Choose dtype (MPS requires float32 for stability)
     if args.dtype == "auto":
-        torch_dtype = torch.float16 if is_cuda else torch.float32
+        if device_str == "cuda":
+            torch_dtype = torch.float16
+        elif device_str == "mps":
+            torch_dtype = torch.float32
+        else:
+            torch_dtype = torch.float32
     elif args.dtype == "bf16":
         torch_dtype = getattr(torch, "bfloat16", torch.float16)
     elif args.dtype == "fp16":
@@ -102,8 +137,8 @@ def main() -> None:
     else:
         torch_dtype = torch.float32
 
-    # Choose device_map
-    use_device_map_auto = is_cuda and (args.device_map == "auto")
+    # Choose device_map (only relevant on CUDA)
+    use_device_map_auto = (device_str == "cuda") and (args.device_map == "auto")
 
     model = VibeVoiceForConditionalGenerationInference.from_pretrained(
         args.model_dir,
@@ -111,6 +146,14 @@ def main() -> None:
         device_map=("auto" if use_device_map_auto else None),
         low_cpu_mem_usage=True,
     )
+    # Optionally apply LoRA adapter
+    if args.adapter_dir:
+        model = PeftModel.from_pretrained(model, args.adapter_dir)
+        # Try to merge LoRA for inference efficiency and to keep base APIs
+        try:
+            model = model.merge_and_unload()
+        except Exception:
+            pass
     processor = VibeVoiceProcessor.from_pretrained(args.model_dir)
     tokenizer = processor.tokenizer
     tokenizer.add_special_tokens({
@@ -121,12 +164,19 @@ def main() -> None:
     except Exception:
         pass
     if not use_device_map_auto:
-        device = torch.device("cuda" if is_cuda else "cpu")
+        device = torch.device(device_str)
         model.to(device)
     else:
         # When device_map=auto, inputs should be moved by HF internals
-        device = torch.device("cuda" if is_cuda else "cpu")
+        device = torch.device("cuda")
     model.eval()
+
+    # Dry-run mode: validate load and exit
+    if args.dry_run:
+        print(f"Loaded model from {args.model_dir} on device {device_str} with dtype {torch_dtype}")
+        if args.adapter_dir:
+            print(f"Applied LoRA adapter from {args.adapter_dir}")
+        return
 
     prompt = build_prompt(args.text, args.seconds)
     inputs = tokenizer([prompt], return_tensors="pt")
